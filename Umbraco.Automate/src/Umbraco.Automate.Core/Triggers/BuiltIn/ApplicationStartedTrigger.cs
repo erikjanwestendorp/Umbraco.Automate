@@ -30,7 +30,8 @@ public sealed class ApplicationStartedTrigger
             InitiatorType = TriggerInitiatorType.System,
             Output = new ApplicationStartedTriggerOutput
             {
-                StartedAt = DateTimeOffset.UtcNow
+                StartedAt = DateTimeOffset.UtcNow,
+                IsRestarting = notification.IsRestarting
             }
         };
     }

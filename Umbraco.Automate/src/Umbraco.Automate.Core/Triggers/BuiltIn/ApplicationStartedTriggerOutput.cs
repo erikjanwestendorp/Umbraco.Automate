@@ -9,4 +9,9 @@ public sealed class ApplicationStartedTriggerOutput
     /// Gets the UTC timestamp when the application started.
     /// </summary>
     public DateTimeOffset StartedAt { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the application is restarting (true) or starting for the first time (false).
+    /// </summary>
+    public bool IsRestarting { get; set; }
 }
