@@ -2,13 +2,22 @@ using Umbraco.Automate.Core.Settings;
 using Umbraco.Automate.Core.Triggers;
 using Umbraco.Automate.Core.Triggers.BuiltIn;
 using Umbraco.Cms.Core.Notifications;
+using Umbraco.Cms.Core.Sync;
 
 namespace Umbraco.Automate.Tests.Unit.Triggers.BuiltIn;
 
 public class ApplicationStartedTriggerTests
 {
-    private readonly ApplicationStartedTrigger _trigger = new(
-        new TriggerInfrastructure(Mock.Of<IEditableModelResolver>()));
+    private readonly Mock<IServerRoleAccessor> _serverRoleAccessor = new();
+    private readonly ApplicationStartedTrigger _trigger;
+
+    public ApplicationStartedTriggerTests()
+    {
+        _serverRoleAccessor.Setup(x => x.CurrentServerRole).Returns(ServerRole.Single);
+        _trigger = new ApplicationStartedTrigger(
+            new TriggerInfrastructure(Mock.Of<IEditableModelResolver>()),
+            _serverRoleAccessor.Object);
+    }
 
     [Fact]
     public void HasCorrectAlias()
@@ -72,5 +81,65 @@ public class ApplicationStartedTriggerTests
         var events = _trigger.MapEvent(notification).ToList();
 
         events.ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MapEvent_PassesThroughIsRestarting(bool isRestarting)
+    {
+        var notification = new UmbracoApplicationStartedNotification(isRestarting);
+
+        var output = _trigger.MapEvent(notification)
+            .ShouldHaveSingleItem()
+            .ShouldBeOfType<TriggerEvent<ApplicationStartedTriggerOutput>>()
+            .Output;
+
+        output.IsRestarting.ShouldBe(isRestarting);
+    }
+
+    [Theory]
+    [InlineData(ServerRole.Single)]
+    [InlineData(ServerRole.SchedulingPublisher)]
+    [InlineData(ServerRole.Subscriber)]
+    [InlineData(ServerRole.Unknown)]
+    public void MapEvent_CapturesCurrentServerRole(ServerRole role)
+    {
+        _serverRoleAccessor.Setup(x => x.CurrentServerRole).Returns(role);
+
+        var output = _trigger.MapEvent(new UmbracoApplicationStartedNotification(isRestarting: false))
+            .ShouldHaveSingleItem()
+            .ShouldBeOfType<TriggerEvent<ApplicationStartedTriggerOutput>>()
+            .Output;
+
+        output.ServerRole.ShouldBe(role.ToString());
+    }
+
+    [Theory]
+    [InlineData(ServerRole.Single)]
+    [InlineData(ServerRole.SchedulingPublisher)]
+    [InlineData(ServerRole.Subscriber)]
+    [InlineData(ServerRole.Unknown)]
+    public void CanHandle_MainServerFilterDisabled_AlwaysTrue(ServerRole role)
+    {
+        ITrigger trigger = _trigger;
+        var output = new ApplicationStartedTriggerOutput { ServerRole = role.ToString() };
+
+        trigger.CanHandle(output, null).ShouldBeTrue();
+        trigger.CanHandle(output, new ApplicationStartedTriggerSettings { OnlyRunOnMainServer = false }).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(ServerRole.Single, true)]
+    [InlineData(ServerRole.SchedulingPublisher, true)]
+    [InlineData(ServerRole.Unknown, true)]
+    [InlineData(ServerRole.Subscriber, false)]
+    public void CanHandle_MainServerFilterEnabled_SkipsSubscribers(ServerRole role, bool expected)
+    {
+        ITrigger trigger = _trigger;
+        var output = new ApplicationStartedTriggerOutput { ServerRole = role.ToString() };
+        var settings = new ApplicationStartedTriggerSettings { OnlyRunOnMainServer = true };
+
+        trigger.CanHandle(output, settings).ShouldBe(expected);
     }
 }
